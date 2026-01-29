@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:15
+    container_name: postgres_annonce
+    restart: always
+    environment:
+      POSTGRES_DB: MasterAnnonce
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password13
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
