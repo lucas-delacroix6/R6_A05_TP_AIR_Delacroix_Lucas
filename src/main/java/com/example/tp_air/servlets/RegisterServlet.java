@@ -37,24 +37,37 @@ public class RegisterServlet extends HttpServlet {
         String password = request.getParameter("password");
 
         if (username == null || email == null || password == null ||
-                username.isEmpty() || email.isEmpty() || password.isEmpty()) {
-            request.setAttribute("error", "Tous les champs sont obligatoires");
+                username.trim().isEmpty() || email.trim().isEmpty() || password.trim().isEmpty()) {
+            request.setAttribute("error", "Veuillez remplir tous les champs obligatoires.");
             request.getRequestDispatcher("/Register.jsp").forward(request, response);
             return;
         }
 
         try {
             User user = new User();
-            user.setUsername(username);
-            user.setEmail(email);
+            user.setUsername(username.trim());
+            user.setEmail(email.trim());
             user.setPassword(password);
             user.setCreated_at(Timestamp.from(Instant.now()));
 
             annonceService.createUser(user);
 
+            request.getSession().setAttribute("success", "Compte créé ! Vous pouvez vous connecter.");
             response.sendRedirect(request.getContextPath() + "/login");
+
         } catch (Exception e) {
-            request.setAttribute("error", "Erreur lors de l'inscription : " + e.getMessage());
+            String errorMessage;
+            String technicalMsg = e.getMessage() != null ? e.getMessage() : "";
+
+            if (technicalMsg.contains("users_username_key")) {
+                errorMessage = "Ce nom d'utilisateur est déjà pris.";
+            } else if (technicalMsg.contains("users_email_key")) {
+                errorMessage = "Cet email est déjà associé à un compte.";
+            } else {
+                errorMessage = technicalMsg;
+            }
+
+            request.setAttribute("error", errorMessage);
             request.getRequestDispatcher("/Register.jsp").forward(request, response);
         }
     }
