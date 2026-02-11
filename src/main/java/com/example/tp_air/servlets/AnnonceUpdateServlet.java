@@ -1,93 +1,66 @@
 package com.example.tp_air.servlets;
 
-
-import com.example.tp_air.daos.AnnonceDAO;
 import com.example.tp_air.models.Annonce;
-import com.example.tp_air.utils.ConnectionDB;
+import com.example.tp_air.models.AnnonceStatus;
+import com.example.tp_air.models.Category;
+import com.example.tp_air.models.User;
+import com.example.tp_air.services.AnnonceService;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
-import java.sql.Connection;
 
 @WebServlet("/annonce/update")
 public class AnnonceUpdateServlet extends HttpServlet {
+    private AnnonceService annonceService;
 
     @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
+    public void init() { this.annonceService = new AnnonceService(); }
 
-        String idParam = request.getParameter("id");
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        Long id = Long.parseLong(request.getParameter("id"));
+        User currentUser = (User) request.getSession().getAttribute("user");
 
-        if (idParam == null || idParam.isEmpty()) {
+        if (!annonceService.isAuthor(id, currentUser)) {
+            request.getSession().setAttribute("error", "Accès refusé : vous n'êtes pas l'auteur de cette annonce.");
             response.sendRedirect(request.getContextPath() + "/annonce/list");
             return;
         }
 
-        try {
-            int id = Integer.parseInt(idParam);
-
-            Connection conn = ConnectionDB.getInstance();
-            AnnonceDAO dao = new AnnonceDAO(conn);
-            Annonce annonce = dao.find(id);
-
-            if (annonce != null) {
-                request.setAttribute("annonce", annonce);
-                request.getRequestDispatcher("/AnnonceUpdate.jsp").forward(request, response);
-            } else {
-                response.sendRedirect(request.getContextPath() + "/annonce/list");
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            response.sendRedirect(request.getContextPath() + "/annonce/list");
-        }
+        Annonce annonce = annonceService.findAnnonceById(id);
+        request.setAttribute("annonce", annonce);
+        request.setAttribute("categories", annonceService.findAllCategories());
+        request.setAttribute("statuses", AnnonceStatus.values());
+        request.getRequestDispatcher("/AnnonceUpdate.jsp").forward(request, response);
     }
 
     @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
-
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         request.setCharacterEncoding("UTF-8");
+        Long id = Long.parseLong(request.getParameter("id"));
+        User currentUser = (User) request.getSession().getAttribute("user");
 
-        String idParam = request.getParameter("id");
-        String title = request.getParameter("title");
-        String description = request.getParameter("description");
-        String address = request.getParameter("address");
-        String mail = request.getParameter("mail");
-
-        if (title == null || title.trim().isEmpty() ||
-        description == null || description.trim().isEmpty() ||
-        address == null || address.trim().isEmpty() ||
-        mail == null || mail.trim().isEmpty()) {
-
-            request.setAttribute("error", "Tous les champs sont obligatoires");
-            doGet(request, response);
+        if (!annonceService.isAuthor(id, currentUser)) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
-        try {
-            int id = Integer.parseInt(idParam);
+        Annonce annonce = annonceService.findAnnonceById(id);
+        annonce.setTitle(request.getParameter("title"));
+        annonce.setDescription(request.getParameter("description"));
+        annonce.setAddress(request.getParameter("address"));
+        annonce.setMail(request.getParameter("mail"));
+        annonce.setStatus(AnnonceStatus.valueOf(request.getParameter("status")));
 
-            Annonce annonce = new Annonce(title, description, address, mail);
-            annonce.setId(id);
+        Category cat = annonceService.findCategoryById(Long.parseLong(request.getParameter("categoryId")));
+        annonce.setCategory(cat);
 
-            Connection conn = ConnectionDB.getInstance();
-            AnnonceDAO dao = new AnnonceDAO(conn);
-
-            if (dao.update(annonce)) {
-                response.sendRedirect(request.getContextPath() + "/annonce/list");
-            } else {
-                request.setAttribute("error", "Erreur lors de la mise a jour");
-                doGet(request, response);
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            request.setAttribute("error", "Erreur serveur");
-            doGet(request, response);
-        }
+        annonceService.updateAnnonce(annonce);
+        request.getSession().setAttribute("success", "Annonce mise à jour avec succès !");
+        response.sendRedirect(request.getContextPath() + "/annonce/list");
     }
 }
