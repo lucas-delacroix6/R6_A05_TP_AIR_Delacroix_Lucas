@@ -1,36 +1,46 @@
 package com.example.tp_air.servlets;
 
-import com.example.tp_air.daos.AnnonceDAO;
 import com.example.tp_air.models.Annonce;
-import com.example.tp_air.utils.ConnectionDB;
+import com.example.tp_air.models.Category;
+import com.example.tp_air.models.User;
+import com.example.tp_air.services.AnnonceService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
 import java.io.IOException;
-import java.sql.Connection;
 
 @WebServlet("/annonce/add")
 public class AnnonceAddServlet extends HttpServlet {
 
+    private AnnonceService annonceService;
+
+    @Override
+    public void init() {
+        this.annonceService = new AnnonceService();
+    }
+
+    @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        request.setAttribute("categories", annonceService.findAllCategories());
         request.getRequestDispatcher("/AnnonceAdd.jsp").forward(request, response);
     }
 
+    @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         request.setCharacterEncoding("UTF-8");
+
+        HttpSession session = request.getSession();
+        User currentUser = (User) session.getAttribute("user");
 
         String title = request.getParameter("title");
         String desc = request.getParameter("description");
         String address = request.getParameter("address");
         String mail = request.getParameter("mail");
+        String categoryIdStr = request.getParameter("categoryId");
 
-        if (title == null || title.trim().isEmpty() ||
-                desc == null  || desc.trim().isEmpty() ||
-                address == null || address.trim().isEmpty() ||
-                mail == null || mail.trim().isEmpty()
-        ) {
-
-            request.setAttribute("error", "Tous les champs sont obligatoires");
+        if (title == null || title.trim().isEmpty() || categoryIdStr == null) {
+            request.setAttribute("error", "Veuillez remplir les champs obligatoires");
+            request.setAttribute("categories", annonceService.findAllCategories());
             request.getRequestDispatcher("/AnnonceAdd.jsp").forward(request, response);
             return;
         }
@@ -38,21 +48,17 @@ public class AnnonceAddServlet extends HttpServlet {
         try {
             Annonce annonce = new Annonce(title, desc, address, mail);
 
-            Connection conn = ConnectionDB.getInstance();
-            AnnonceDAO dao = new AnnonceDAO(conn);
+            Category category = annonceService.findCategoryById(Long.parseLong(categoryIdStr));
+            annonce.setCategory(category);
 
-            if (dao.create(annonce)) {
-                response.sendRedirect(request.getContextPath() + "/annonce/list");
-            } else {
-                request.setAttribute("error", "Erreur lors de la creation");
-                request.getRequestDispatcher("/AnnonceAdd.jsp").forward(request, response);
-            }
+            annonce.setAuthor(currentUser);
 
+            annonceService.createAnnonce(annonce);
+            response.sendRedirect(request.getContextPath() + "/annonce/list");
         } catch (Exception e) {
-            e.printStackTrace();
-            response.sendError(500, "Erreur BDD : " + e.getMessage());
+            request.setAttribute("error", "Erreur : " + e.getMessage());
+            request.setAttribute("categories", annonceService.findAllCategories());
             request.getRequestDispatcher("/AnnonceAdd.jsp").forward(request, response);
-
         }
     }
 }
