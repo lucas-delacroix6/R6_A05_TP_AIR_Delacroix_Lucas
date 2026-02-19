@@ -1,50 +1,108 @@
 package com.example.tp_air.services;
 
-import com.example.tp_air.models.*;
+import com.example.tp_air.dto.AnnonceDTO;
+import com.example.tp_air.dto.PatchAnnonceDTO;
+import com.example.tp_air.models.Annonce;
+import com.example.tp_air.models.User;
+import com.example.tp_air.repositories.AnnonceRepository;
+import com.example.tp_air.repositories.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import java.util.List;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
 public class WorkflowIntegrationTest {
 
+    @Mock
+    private AnnonceRepository annonceRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @InjectMocks
+    private AnnonceService annonceService;
+
     @Test
-    @DisplayName("Cycle de vie complet : Création -> Publication -> Recherche filtrée")
+    @DisplayName("Cycle de vie complet : Création -> Publication -> Vérification")
     void testCompleteLifeCycle() {
-        AnnonceService service = new AnnonceService();
+        // --- Données de test ---
+        User author = new User();
+        author.setId(1L);
+        author.setUsername("testeur");
 
-        List<User> users = service.findAllUsers();
-        List<Category> cats = service.findAllCategories();
+        Annonce savedAnnonce = Annonce.builder()
+                .title("Appart Lyon")
+                .description("Lumineux")
+                .price(new BigDecimal("500.00"))
+                .category("Immobilier")
+                .status(Annonce.Status.DRAFT)
+                .author(author)
+                .build();
+        savedAnnonce.setId(10L);
 
-        if(users.isEmpty() || cats.isEmpty()) {
-            fail("Base vide : ce test nécessite au moins un utilisateur et une catégorie existants.");
-        }
+        // --- 1. Création ---
+        when(userRepository.findById(1L)).thenReturn(Optional.of(author));
+        when(annonceRepository.save(any(Annonce.class))).thenReturn(savedAnnonce);
 
-        User author = users.getFirst();
+        AnnonceDTO createInput = AnnonceDTO.builder()
+                .title("Appart Lyon")
+                .description("Lumineux")
+                .price(new BigDecimal("500.00"))
+                .category("Immobilier")
+                .build();
 
-        Annonce a = new Annonce("Appart Lyon", "Lumineux", "Lyon 06", "lyon@test.fr");
-        a.setAuthor(author);
-        a.setCategory(cats.getFirst());
-        service.createAnnonce(a);
+        AnnonceDTO created = annonceService.create(createInput, 1L);
 
-        assertNotNull(a.getId());
-        assertEquals(AnnonceStatus.DRAFT, a.getStatus());
+        assertNotNull(created.getId());
+        assertEquals("Appart Lyon", created.getTitle());
 
-        service.publishAnnonce(a.getId(), author);
+        // --- 2. Publication via patch (DRAFT -> PUBLISHED) ---
+        Annonce draftAnnonce = Annonce.builder()
+                .title("Appart Lyon")
+                .description("Lumineux")
+                .price(new BigDecimal("500.00"))
+                .category("Immobilier")
+                .status(Annonce.Status.DRAFT)
+                .author(author)
+                .build();
+        draftAnnonce.setId(10L);
 
-        Annonce updated = service.findAnnonceById(a.getId());
-        assertEquals(AnnonceStatus.PUBLISHED, updated.getStatus());
+        Annonce publishedAnnonce = Annonce.builder()
+                .title("Appart Lyon")
+                .description("Lumineux")
+                .price(new BigDecimal("500.00"))
+                .category("Immobilier")
+                .status(Annonce.Status.PUBLISHED)
+                .author(author)
+                .build();
+        publishedAnnonce.setId(10L);
 
+        when(annonceRepository.findById(10L)).thenReturn(Optional.of(draftAnnonce));
+        when(annonceRepository.update(any(Annonce.class))).thenReturn(publishedAnnonce);
 
-        List<Annonce> list = service.searchAnnonces("Lyon", 1, 10, author);
-        assertTrue(list.stream().anyMatch(res -> res.getTitle().contains("Appart Lyon")),
-                "L'annonce devrait être visible pour son auteur");
+        PatchAnnonceDTO patchDTO = new PatchAnnonceDTO();
+        patchDTO.setStatus("PUBLISHED");
 
-        User stranger = new User();
-        stranger.setId(-99L);
+        AnnonceDTO patched = annonceService.patch(10L, patchDTO, 1L);
 
-        List<Annonce> publicList = service.searchAnnonces("Lyon", 1, 10, stranger);
-        assertTrue(publicList.stream().anyMatch(res -> res.getTitle().contains("Appart Lyon")),
-                "L'annonce PUBLISHED doit être visible par tout le monde");
+        assertEquals("PUBLISHED", patched.getStatus());
+
+        // --- 3. Vérification que l'annonce est bien publiée ---
+        when(annonceRepository.findById(10L)).thenReturn(Optional.of(publishedAnnonce));
+
+        AnnonceDTO found = annonceService.findById(10L);
+
+        assertEquals(10L, found.getId());
+        assertEquals("PUBLISHED", found.getStatus());
+        assertEquals("Appart Lyon", found.getTitle());
     }
 }

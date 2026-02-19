@@ -1,97 +1,106 @@
 package com.example.tp_air.repositories;
 
-import com.example.tp_air.models.*;
+import com.example.tp_air.models.Annonce;
 import com.example.tp_air.utils.JPAUtil;
-import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.*;
+
 import java.util.List;
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-public class AnnonceRepositoryTest {
-    private EntityManager em;
-    private AnnonceRepository repository;
+/**
+ * Integration tests for AnnonceRepository using an H2 in-memory database.
+ */
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+class AnnonceRepositoryTest {
 
-    @BeforeEach
-    void setUp() {
-        em = JPAUtil.getEntityManager();
-        repository = new AnnonceRepository(em);
-        em.getTransaction().begin();
+    private static AnnonceRepository repository;
+
+    @BeforeAll
+    static void setup() {
+        JPAUtil.setPersistenceUnitName("masterannonceTestPU");
+        repository = new AnnonceRepository();
+        TestDataLoader.load();
     }
 
-    @AfterEach
-    void tearDown() {
-        if (em.getTransaction().isActive()) em.getTransaction().rollback();
-        em.close();
-    }
-
-    @Test
-    void testSaveFindAndSearch() {
-        // Création des entités parentes
-        User author = new User();
-        author.setUsername("dev_user_" + System.currentTimeMillis());
-        author.setEmail("dev@test.fr");
-        author.setPassword("secret123");
-        em.persist(author);
-
-        Category cat = new Category();
-        cat.setLabel("Informatique");
-        em.persist(cat);
-
-        // Création de l'annonce
-        Annonce a = new Annonce("Ordinateur Pro", "Super état", "Paris", "contact@pro.fr");
-        a.setAuthor(author);
-        a.setCategory(cat);
-        a.setStatus(AnnonceStatus.DRAFT);
-
-        repository.save(a);
-        em.flush();
-
-        // Test de la recherche JPQL
-        List<Annonce> results = repository.search("Ordinateur", 1, 10, author.getId());
-
-        assertFalse(results.isEmpty(), "L'annonce devrait être trouvée par mot-clé");
-        assertEquals("Ordinateur Pro", results.getFirst().getTitle());
-        assertEquals("Informatique", results.getFirst().getCategory().getLabel());
+    @AfterAll
+    static void tearDown() {
+        TestDataLoader.cleanup();
+        JPAUtil.close();
     }
 
     @Test
-    @DisplayName("Niveau 3.b - Vérifie que les relations sont chargées (évite LazyInitializationException)")
-    void testLazyLoadingPrevention() {
-        User author = new User();
-        author.setUsername("test_lazy_" + System.currentTimeMillis());
-        author.setEmail("lazy@test.fr");
-        author.setPassword("secret123");
-        em.persist(author);
+    @Order(1)
+    void testFindAll_pagination_page0() {
+        List<Annonce> results = repository.findAll(0, 2);
+        assertEquals(2, results.size(), "Page 0 with size 2 should return 2 results");
+    }
 
-        Category cat = new Category();
-        cat.setLabel("Test Lazy");
-        em.persist(cat);
+    @Test
+    @Order(2)
+    void testFindAll_pagination_page1() {
+        List<Annonce> results = repository.findAll(1, 2);
+        assertEquals(1, results.size(), "Page 1 with size 2 should return 1 remaining result");
+    }
 
-        Annonce a = new Annonce("Ordinateur Pro", "Super état", "Paris", "contact@pro.fr");
-        a.setAuthor(author);
-        a.setCategory(cat);
-        a.setStatus(AnnonceStatus.DRAFT);
+    @Test
+    @Order(3)
+    void testCountAll() {
+        long count = repository.countAll();
+        assertEquals(3, count, "Should count 3 annonces");
+    }
 
-        repository.save(a);
-        em.flush();
-        Long savedId = a.getId();
+    @Test
+    @Order(4)
+    void testFindById_existing() {
+        Optional<Annonce> result = repository.findById(TestDataLoader.ANNONCE_DRAFT.getId());
+        assertTrue(result.isPresent());
+        assertEquals("Draft Annonce", result.get().getTitle());
+    }
 
-        em.clear();
+    @Test
+    @Order(5)
+    void testFindById_notFound() {
+        Optional<Annonce> result = repository.findById(999999L);
+        assertFalse(result.isPresent());
+    }
 
-        Annonce found = repository.findById(savedId);
+    @Test
+    @Order(6)
+    void testSave_and_findById() {
+        Annonce annonce = Annonce.builder()
+                .title("New Test Annonce")
+                .description("Created in test")
+                .status(Annonce.Status.DRAFT)
+                .author(TestDataLoader.USER_1)
+                .build();
 
-        assertNotNull(found, "L'annonce aurait dû être trouvée en base");
+        Annonce saved = repository.save(annonce);
+        assertNotNull(saved.getId());
 
-        em.detach(found);
+        Optional<Annonce> found = repository.findById(saved.getId());
+        assertTrue(found.isPresent());
+        assertEquals("New Test Annonce", found.get().getTitle());
 
-        assertDoesNotThrow(() -> {
-            String authorName = found.getAuthor().getUsername();
-            String catLabel = found.getCategory().getLabel();
+        // Cleanup
+        repository.delete(saved.getId());
+    }
 
-            System.out.println("Vérification Lazy OK : " + authorName + " / " + catLabel);
+    @Test
+    @Order(7)
+    void testDelete() {
+        Annonce annonce = Annonce.builder()
+                .title("To Delete")
+                .description("Will be deleted")
+                .status(Annonce.Status.ARCHIVED)
+                .author(TestDataLoader.USER_1)
+                .build();
+        Annonce saved = repository.save(annonce);
+        Long id = saved.getId();
 
-            assertEquals("Test Lazy", catLabel);
-            assertNotNull(authorName);
-        });
+        repository.delete(id);
+
+        assertFalse(repository.findById(id).isPresent());
     }
 }

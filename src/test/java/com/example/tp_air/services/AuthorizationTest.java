@@ -7,8 +7,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import static org.mockito.Mockito.*;
+
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class AuthorizationTest {
@@ -18,16 +21,19 @@ public class AuthorizationTest {
 
     @InjectMocks
     private AnnonceService annonceService;
+
     @Test
     @DisplayName("Vérifie qu'un utilisateur ne peut pas modifier l'annonce d'un autre")
     void testAccessControl() {
-        User user1 = new User(); user1.setId(1L);
-        User user2 = new User(); user2.setId(2L);
+        User user1 = new User();
+        user1.setId(1L);
+        User user2 = new User();
+        user2.setId(2L);
 
         Annonce a = new Annonce();
         a.setAuthor(user1);
 
-        when(annonceRepository.findById(100L)).thenReturn(a);
+        when(annonceRepository.findById(100L)).thenReturn(Optional.of(a));
 
         assertFalse(annonceService.isAuthor(100L, user2));
         assertTrue(annonceService.isAuthor(100L, user1));

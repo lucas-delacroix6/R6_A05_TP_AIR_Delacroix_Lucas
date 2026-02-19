@@ -11,7 +11,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,11 +36,11 @@ public class SecurityAuthorizationTest {
         annonce.setId(1L);
         annonce.setAuthor(author);
 
-        when(annonceRepository.findById(1L)).thenReturn(annonce);
+        when(annonceRepository.findById(1L)).thenReturn(Optional.of(annonce));
 
-        boolean isAuthorized = annonceService.isAuthor(1L, hacker);
+       boolean isAuthorized = annonceService.isAuthor(1L, hacker);
 
-        assertFalse(isAuthorized, "Le pirate (99) ne doit pas être autorisé pour l'annonce de l'auteur (10)");
-        assertTrue(annonceService.isAuthor(1L, author), "L'auteur réel doit être autorisé");
+       assertFalse(isAuthorized, "Le pirate (99) ne doit pas être autorisé pour l'annonce de l'auteur (10)");
+       assertTrue(annonceService.isAuthor(1L, author), "L'auteur réel doit être autorisé");
     }
 }

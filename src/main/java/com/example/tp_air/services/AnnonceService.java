@@ -1,201 +1,171 @@
 package com.example.tp_air.services;
 
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import jakarta.validation.ValidatorFactory;
-import jakarta.validation.ConstraintViolation;
-import java.util.Set;
-
+import com.example.tp_air.dto.AnnonceDTO;
+import com.example.tp_air.dto.PagedResponse;
+import com.example.tp_air.dto.PatchAnnonceDTO;
 import com.example.tp_air.models.Annonce;
-import com.example.tp_air.models.AnnonceStatus;
-import com.example.tp_air.models.Category;
 import com.example.tp_air.models.User;
+import com.example.tp_air.exceptions.BusinessException;
+import com.example.tp_air.exceptions.ForbiddenException;
+import com.example.tp_air.exceptions.NotFoundException;
 import com.example.tp_air.repositories.AnnonceRepository;
-import com.example.tp_air.repositories.CategoryRepository;
 import com.example.tp_air.repositories.UserRepository;
-import com.example.tp_air.utils.JPAUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityTransaction;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class AnnonceService {
-    private final Validator validator;
-    private AnnonceRepository annonceRepository;
+
+    private static final Logger log = LoggerFactory.getLogger(AnnonceService.class);
+
+    private final AnnonceRepository annonceRepository;
+    private final UserRepository userRepository;
 
     public AnnonceService() {
-        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
-            this.validator = factory.getValidator();
-        }
+        this.annonceRepository = new AnnonceRepository();
+        this.userRepository = new UserRepository();
     }
 
-    public AnnonceService(AnnonceRepository annonceRepository) {
-        this();
+    // Constructor for testing (injection)
+    public AnnonceService(AnnonceRepository annonceRepository, UserRepository userRepository) {
         this.annonceRepository = annonceRepository;
+        this.userRepository = userRepository;
     }
 
-    private AnnonceRepository getAnnonceRepository(EntityManager em) {
-        if (this.annonceRepository != null) return this.annonceRepository;
-        return new AnnonceRepository(em);
+    public PagedResponse<AnnonceDTO> findAll(int page, int size) {
+        List<AnnonceDTO> dtos = annonceRepository.findAll(page, size)
+                .stream().map(AnnonceDTO::fromEntity).collect(Collectors.toList());
+        long total = annonceRepository.countAll();
+        return new PagedResponse<>(dtos, page, size, total);
     }
 
-    private <T> void validate(T object) {
-        Set<ConstraintViolation<T>> violations = validator.validate(object);
-        if (!violations.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            for (ConstraintViolation<T> violation : violations) {
-                sb.append(violation.getMessage()).append(". ");
-            }
-            throw new RuntimeException(sb.toString());
+    public AnnonceDTO findById(Long id) {
+        return annonceRepository.findById(id)
+                .map(AnnonceDTO::fromEntity)
+                .orElseThrow(() -> new NotFoundException("Annonce not found with id: " + id));
+    }
+
+    public AnnonceDTO create(AnnonceDTO dto, Long authorId) {
+        User author = userRepository.findById(authorId)
+                .orElseThrow(() -> new NotFoundException("User not found with id: " + authorId));
+
+        Annonce annonce = Annonce.builder()
+                .title(dto.getTitle())
+                .description(dto.getDescription())
+                .price(dto.getPrice())
+                .category(dto.getCategory())
+                .status(Annonce.Status.DRAFT)
+                .author(author)
+                .build();
+
+        Annonce saved = annonceRepository.save(annonce);
+        log.info("Created annonce id={} by user={}", saved.getId(), author.getUsername());
+        return AnnonceDTO.fromEntity(saved);
+    }
+
+    public AnnonceDTO update(Long id, AnnonceDTO dto, Long currentUserId) {
+        Annonce annonce = annonceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Annonce not found with id: " + id));
+
+        checkAuthor(annonce, currentUserId);
+        checkNotPublished(annonce);
+
+        annonce.setTitle(dto.getTitle());
+        annonce.setDescription(dto.getDescription());
+        annonce.setPrice(dto.getPrice());
+        annonce.setCategory(dto.getCategory());
+
+        if (dto.getStatus() != null) {
+            Annonce.Status newStatus = parseStatus(dto.getStatus());
+            validateStatusTransition(annonce.getStatus(), newStatus);
+            annonce.setStatus(newStatus);
         }
+
+        Annonce updated = annonceRepository.update(annonce);
+        log.info("Updated annonce id={} by user={}", id, currentUserId);
+        return AnnonceDTO.fromEntity(updated);
     }
 
-    public void createAnnonce(Annonce annonce) {
-        validate(annonce);
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            EntityTransaction tx = em.getTransaction();
-            try {
-                tx.begin();
-                annonce.setStatus(AnnonceStatus.DRAFT);
-                getAnnonceRepository(em).save(annonce);
-                tx.commit();
-            } catch (Exception e) {
-                if (tx.isActive()) tx.rollback();
-                e.printStackTrace();
-            }
+    public AnnonceDTO patch(Long id, PatchAnnonceDTO dto, Long currentUserId) {
+        Annonce annonce = annonceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Annonce not found with id: " + id));
+
+        checkAuthor(annonce, currentUserId);
+        checkNotPublished(annonce);
+
+        if (dto.getTitle() != null)
+            annonce.setTitle(dto.getTitle());
+        if (dto.getDescription() != null)
+            annonce.setDescription(dto.getDescription());
+        if (dto.getPrice() != null)
+            annonce.setPrice(dto.getPrice());
+        if (dto.getCategory() != null)
+            annonce.setCategory(dto.getCategory());
+        if (dto.getStatus() != null) {
+            Annonce.Status newStatus = parseStatus(dto.getStatus());
+            validateStatusTransition(annonce.getStatus(), newStatus);
+            annonce.setStatus(newStatus);
         }
+
+        Annonce updated = annonceRepository.update(annonce);
+        log.info("Patched annonce id={} by user={}", id, currentUserId);
+        return AnnonceDTO.fromEntity(updated);
     }
 
-    public void updateAnnonce(Annonce annonce) {
-        validate(annonce);
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            EntityTransaction tx = em.getTransaction();
-            try {
-                tx.begin();
-                getAnnonceRepository(em).update(annonce);
-                tx.commit();
-            } catch (Exception e) {
-                if (tx.isActive()) tx.rollback();
-                e.printStackTrace();
-            }
+    public void delete(Long id, Long currentUserId) {
+        Annonce annonce = annonceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Annonce not found with id: " + id));
+
+        checkAuthor(annonce, currentUserId);
+
+        // Business rule: must be ARCHIVED before deletion
+        if (annonce.getStatus() != Annonce.Status.ARCHIVED) {
+            throw new BusinessException("Annonce must be ARCHIVED before deletion");
         }
+
+        annonceRepository.delete(id);
+        log.info("Deleted annonce id={} by user={}", id, currentUserId);
     }
 
-    public void publishAnnonce(Long id, User currentUser) {
-        if (isAuthor(id, currentUser)) {
-            updateStatus(id, AnnonceStatus.PUBLISHED);
-        }
-    }
-
-    public void archiveAnnonce(Long id, User currentUser) {
-        if (isAuthor(id, currentUser)) {
-            updateStatus(id, AnnonceStatus.ARCHIVED);
-        }
-    }
-
-    private void updateStatus(Long id, AnnonceStatus newStatus) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            EntityTransaction tx = em.getTransaction();
-            try {
-                tx.begin();
-                AnnonceRepository repo = getAnnonceRepository(em);
-                Annonce annonce = repo.findById(id);
-                if (annonce != null) {
-                    annonce.setStatus(newStatus);
-                    repo.update(annonce);
-                }
-                tx.commit();
-            } catch (Exception e) {
-                if (tx.isActive()) tx.rollback();
-            }
-        }
-    }
-
-    public void deleteAnnonce(Annonce annonce) {
-        validate(annonce);
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            EntityTransaction tx = em.getTransaction();
-            try {
-                tx.begin();
-                Annonce managedAnnonce = em.merge(annonce);
-                getAnnonceRepository(em).delete(managedAnnonce);
-                tx.commit();
-            } catch (Exception e) {
-                if (tx.isActive()) tx.rollback();
-                e.printStackTrace();
-            }
-        }
-    }
-
-    public List<Annonce> searchAnnonces(String keyword, int page, int size, User currentUser) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            Long userId = (currentUser != null) ? currentUser.getId() : -1L;
-            return getAnnonceRepository(em).search(keyword, page, size, userId);
-        }
-    }
-
-    public long countAnnonces(String keyword, User currentUser) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            Long userId = (currentUser != null) ? currentUser.getId() : -1L;
-            return getAnnonceRepository(em).countSearch(keyword, userId);
-        }
-    }
-
-    public Annonce findAnnonceById(Long id) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            return getAnnonceRepository(em).findById(id);
-        }
-    }
-
-    public List<Annonce> findAllAnnonces(User currentUser) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            Long userId = (currentUser != null) ? currentUser.getId() : -1L;
-            return getAnnonceRepository(em).findAll(userId);
-        }
-    }
-
-    public Category findCategoryById(Long id) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            return new CategoryRepository(em).findById(id);
-        }
-    }
-
-    public List<Category> findAllCategories() {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            return new CategoryRepository(em).findAll();
-        }
-    }
-
-    public User findUserById(Long id) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            return new UserRepository(em).findById(id);
-        }
-    }
-
-    public List<User> findAllUsers() {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            return em.createQuery("SELECT u FROM User u", User.class).getResultList();
-        }
-    }
-
-    public void createUser(User user) {
-        try (EntityManager em = JPAUtil.getEntityManager()) {
-            EntityTransaction tx = em.getTransaction();
-            try {
-                tx.begin();
-                em.persist(user);
-                tx.commit();
-            } catch (Exception e) {
-                if (tx.isActive()) tx.rollback();
-                throw e;
-            }
-        }
-    }
+    // --- Business rules ---
 
     public boolean isAuthor(Long annonceId, User user) {
-        if (user == null) return false;
-        Annonce annonce = findAnnonceById(annonceId);
-        return annonce != null && annonce.getAuthor() != null &&
-                annonce.getAuthor().getId().equals(user.getId());
+        Annonce annonce = annonceRepository.findById(annonceId)
+                .orElseThrow(() -> new NotFoundException("Annonce not found with id: " + annonceId));
+        return annonce.getAuthor().getId().equals(user.getId());
+    }
+
+    private void checkAuthor(Annonce annonce, Long currentUserId) {
+        if (!annonce.getAuthor().getId().equals(currentUserId)) {
+            throw new ForbiddenException("You are not the author of this annonce");
+        }
+    }
+
+    private void checkNotPublished(Annonce annonce) {
+        if (annonce.getStatus() == Annonce.Status.PUBLISHED) {
+            throw new BusinessException("A PUBLISHED annonce cannot be modified");
+        }
+    }
+
+    private Annonce.Status parseStatus(String statusStr) {
+        try {
+            return Annonce.Status.valueOf(statusStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException("Invalid status: " + statusStr);
+        }
+    }
+
+    private void validateStatusTransition(Annonce.Status current, Annonce.Status next) {
+        // DRAFT -> PUBLISHED or ARCHIVED
+        // PUBLISHED -> ARCHIVED only
+        // ARCHIVED -> nothing
+        if (current == Annonce.Status.ARCHIVED) {
+            throw new BusinessException("An ARCHIVED annonce cannot change status");
+        }
+        if (current == Annonce.Status.PUBLISHED && next == Annonce.Status.DRAFT) {
+            throw new BusinessException("Cannot revert PUBLISHED annonce to DRAFT");
+        }
     }
 }

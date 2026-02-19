@@ -1,70 +1,145 @@
 package com.example.tp_air.services;
 
-import com.example.tp_air.models.*;
+import com.example.tp_air.dto.AnnonceDTO;
+import com.example.tp_air.models.Annonce;
+import com.example.tp_air.models.User;
+import com.example.tp_air.exceptions.BusinessException;
+import com.example.tp_air.exceptions.ForbiddenException;
+import com.example.tp_air.exceptions.NotFoundException;
 import com.example.tp_air.repositories.AnnonceRepository;
-import org.junit.jupiter.api.DisplayName;
+import com.example.tp_air.repositories.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
+import java.math.BigDecimal;
+import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * Unit tests for AnnonceService using Mockito.
+ */
 @ExtendWith(MockitoExtension.class)
-public class AnnonceServiceTest {
+class AnnonceServiceTest {
 
     @Mock
     private AnnonceRepository annonceRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
     @InjectMocks
     private AnnonceService annonceService;
 
-    @Test
-    @DisplayName("Succès : Archive une annonce dont on est l'auteur")
-    void testArchiveAnnonceLogic() {
-        User author = new User(); author.setId(10L);
-        Annonce a = new Annonce();
-        a.setId(1L);
-        a.setAuthor(author);
-        a.setStatus(AnnonceStatus.PUBLISHED);
+    private User author;
+    private Annonce draftAnnonce;
 
-        when(annonceRepository.findById(1L)).thenReturn(a);
+    @BeforeEach
+    void setUp() {
+        author = new User();
+        author.setId(1L);
+        author.setUsername("testuser");
+        author.setRole(User.Role.ROLE_USER);
 
-        annonceService.archiveAnnonce(1L, author);
-
-        assertEquals(AnnonceStatus.ARCHIVED, a.getStatus(), "Le statut doit passer à ARCHIVED");
-        verify(annonceRepository).update(a);
+        draftAnnonce = Annonce.builder()
+                .title("Test Annonce")
+                .description("Description")
+                .price(new BigDecimal("100.00"))
+                .status(Annonce.Status.DRAFT)
+                .author(author)
+                .build();
+        // Simulate persisted ID
+        try {
+            var idField = Annonce.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(draftAnnonce, 1L);
+        } catch (Exception ignored) {}
     }
 
     @Test
-    @DisplayName("Sécurité : Refuse d'archiver une annonce d'un autre auteur")
-    void testArchiveUnauthorized() {
-        User author = new User(); author.setId(10L);
-        User hacker = new User(); hacker.setId(99L);
+    void findById_existingId_returnsDTO() {
+        when(annonceRepository.findById(1L)).thenReturn(Optional.of(draftAnnonce));
 
-        Annonce a = new Annonce();
-        a.setId(1L);
-        a.setAuthor(author);
-        a.setStatus(AnnonceStatus.PUBLISHED);
+        AnnonceDTO result = annonceService.findById(1L);
 
-        when(annonceRepository.findById(1L)).thenReturn(a);
-
-        annonceService.archiveAnnonce(1L, hacker);
-
-        assertNotEquals(AnnonceStatus.ARCHIVED, a.getStatus());
-        verify(annonceRepository, never()).update(any());
+        assertNotNull(result);
+        assertEquals("Test Annonce", result.getTitle());
     }
 
     @Test
-    @DisplayName("Visibilité : Vérifie que l'ID de l'utilisateur est bien transmis au repo pour le filtrage")
-    void testSearchVisibilityInService() {
-        User user = new User(); user.setId(1L);
-        String kw = "test";
+    void findById_unknownId_throwsNotFoundException() {
+        when(annonceRepository.findById(99L)).thenReturn(Optional.empty());
 
-        annonceService.searchAnnonces(kw, 1, 10, user);
+        assertThrows(NotFoundException.class, () -> annonceService.findById(99L));
+    }
 
-        verify(annonceRepository).search(eq(kw), eq(1), eq(10), eq(1L));
+    @Test
+    void delete_notArchived_throwsBusinessException() {
+        when(annonceRepository.findById(1L)).thenReturn(Optional.of(draftAnnonce));
+
+        assertThrows(BusinessException.class, () -> annonceService.delete(1L, 1L));
+        verify(annonceRepository, never()).delete(anyLong());
+    }
+
+    @Test
+    void delete_notAuthor_throwsForbiddenException() {
+        when(annonceRepository.findById(1L)).thenReturn(Optional.of(draftAnnonce));
+
+        // currentUserId = 99 != author.id = 1
+        assertThrows(ForbiddenException.class, () -> annonceService.delete(1L, 99L));
+    }
+
+    @Test
+    void update_publishedAnnonce_throwsBusinessException() {
+        Annonce published = Annonce.builder()
+                .title("Published")
+                .description("Desc")
+                .status(Annonce.Status.PUBLISHED)
+                .author(author)
+                .build();
+        try {
+            var idField = Annonce.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(published, 2L);
+        } catch (Exception ignored) {}
+
+        when(annonceRepository.findById(2L)).thenReturn(Optional.of(published));
+
+        AnnonceDTO dto = new AnnonceDTO();
+        dto.setTitle("New title");
+        dto.setDescription("New description");
+
+        assertThrows(BusinessException.class, () -> annonceService.update(2L, dto, 1L));
+    }
+
+    @Test
+    void create_validData_returnsCreatedDTO() {
+        AnnonceDTO dto = AnnonceDTO.builder()
+                .title("New Annonce")
+                .description("New Description")
+                .price(new BigDecimal("150.00"))
+                .build();
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(author));
+        when(annonceRepository.save(any(Annonce.class))).thenAnswer(inv -> {
+            Annonce a = inv.getArgument(0);
+            try {
+                var f = Annonce.class.getDeclaredField("id");
+                f.setAccessible(true);
+                f.set(a, 10L);
+            } catch (Exception ignored) {}
+            return a;
+        });
+
+        AnnonceDTO result = annonceService.create(dto, 1L);
+
+        assertNotNull(result.getId());
+        assertEquals("New Annonce", result.getTitle());
+        assertEquals("DRAFT", result.getStatus());
     }
 }

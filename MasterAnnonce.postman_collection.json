@@ -1,0 +1,898 @@
+{
+	"info": {
+		"name": "MasterAnnonce API",
+		"description": "Collection Postman pour l'API MasterAnnonce – TP Dev Avancé #3 (IUT Montreuil BUT 3)\n\nCouvre l'ensemble des endpoints : HelloWorld, Authentification JAAS, CRUD Annonces avec pagination, validation, règles métier et sécurité Bearer Token.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080/masterannonce/api",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "annonceId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "01 – HelloWorld",
+			"item": [
+				{
+					"name": "GET /helloWorld",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Body contains message', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.message).to.include('Hello');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/helloWorld",
+							"host": ["{{baseUrl}}"],
+							"path": ["helloWorld"]
+						},
+						"description": "Test simple : vérifie que JAX-RS est opérationnel."
+					}
+				},
+				{
+					"name": "GET /params?name=Claude",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('QueryParam returned', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.type).to.eql('QueryParam');",
+									"    pm.expect(json.value).to.eql('Claude');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/params?name=Claude",
+							"host": ["{{baseUrl}}"],
+							"path": ["params"],
+							"query": [
+								{
+									"key": "name",
+									"value": "Claude"
+								}
+							]
+						},
+						"description": "Démo @QueryParam"
+					}
+				},
+				{
+					"name": "GET /params/{value}",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('PathParam returned', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.type).to.eql('PathParam');",
+									"    pm.expect(json.value).to.eql('hello');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/params/hello",
+							"host": ["{{baseUrl}}"],
+							"path": ["params", "hello"]
+						},
+						"description": "Démo @PathParam"
+					}
+				}
+			],
+			"description": "Exercice 1 – Endpoints de test JAX-RS"
+		},
+		{
+			"name": "02 – Authentification",
+			"item": [
+				{
+					"name": "POST /login (john)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Token returned', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.token).to.be.a('string');",
+									"    pm.expect(json.expiresIn).to.be.a('number');",
+									"    // Sauvegarde du token pour les requêtes suivantes",
+									"    pm.collectionVariables.set('token', json.token);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"john\",\n    \"password\": \"password\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["login"]
+						},
+						"description": "Authentification JAAS via DbLoginModule. Le token retourné est automatiquement sauvegardé dans la variable de collection."
+					}
+				},
+				{
+					"name": "POST /login (mauvais password → 401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 401 Unauthorized', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"john\",\n    \"password\": \"wrong\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["login"]
+						},
+						"description": "Vérification : mauvaises credentials → 401"
+					}
+				},
+				{
+					"name": "POST /login (champs vides → 400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 400 Bad Request', function () {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"\",\n    \"password\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["login"]
+						},
+						"description": "Vérification Bean Validation : champs vides → 400"
+					}
+				}
+			],
+			"description": "Authentification JAAS + génération token Bearer"
+		},
+		{
+			"name": "03 – Annonces (lecture)",
+			"item": [
+				{
+					"name": "GET /annonces (page 0)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Paged response structure', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json).to.have.property('content');",
+									"    pm.expect(json).to.have.property('page');",
+									"    pm.expect(json).to.have.property('size');",
+									"    pm.expect(json).to.have.property('totalElements');",
+									"    pm.expect(json).to.have.property('totalPages');",
+									"    pm.expect(json.content).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/annonces?page=0&size=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces"],
+							"query": [
+								{ "key": "page", "value": "0" },
+								{ "key": "size", "value": "10" }
+							]
+						},
+						"description": "Liste paginée des annonces (pas d'auth requise)"
+					}
+				},
+				{
+					"name": "GET /annonces/{id}",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Annonce has expected fields', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json).to.have.property('title');",
+									"    pm.expect(json).to.have.property('status');",
+									"    pm.expect(json).to.have.property('authorUsername');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/annonces/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "1"]
+						},
+						"description": "Détail d'une annonce par ID"
+					}
+				},
+				{
+					"name": "GET /annonces/{id} (inexistant → 404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 404', function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"pm.test('Error body', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.error).to.eql('NOT_FOUND');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/annonces/999999",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "999999"]
+						},
+						"description": "Annonce inexistante → 404 NOT_FOUND"
+					}
+				}
+			],
+			"description": "Endpoints publics de lecture"
+		},
+		{
+			"name": "04 – Annonces (écriture – auth required)",
+			"item": [
+				{
+					"name": "POST /annonces (sans token → 401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 401 without token', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Test sans auth\",\n    \"description\": \"Doit être refusé\",\n    \"price\": 50.00\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces"]
+						},
+						"description": "Tentative de création sans token → 401"
+					}
+				},
+				{
+					"name": "POST /annonces (création → 201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 Created', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Location header present', function () {",
+									"    pm.response.to.have.header('Location');",
+									"});",
+									"pm.test('Created annonce returned', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.id).to.be.a('number');",
+									"    pm.expect(json.title).to.eql('Guitare acoustique');",
+									"    pm.expect(json.status).to.eql('DRAFT');",
+									"    pm.collectionVariables.set('annonceId', json.id);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Guitare acoustique\",\n    \"description\": \"Guitare Yamaha FG800 en très bon état, cordes neuves\",\n    \"price\": 180.00,\n    \"category\": \"Music\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces"]
+						},
+						"description": "Création d'une annonce avec token valide → 201 + Location header"
+					}
+				},
+				{
+					"name": "POST /annonces (validation → 400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 400 Bad Request', function () {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"AB\",\n    \"description\": \"\",\n    \"price\": -10\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces"]
+						},
+						"description": "Données invalides : titre trop court, description vide, prix négatif → 400"
+					}
+				},
+				{
+					"name": "PUT /annonces/{id} (mise à jour complète)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Title updated', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.title).to.eql('Guitare acoustique Yamaha');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Guitare acoustique Yamaha\",\n    \"description\": \"Guitare Yamaha FG800 en très bon état, cordes neuves, housse incluse\",\n    \"price\": 200.00,\n    \"category\": \"Music\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						},
+						"description": "Mise à jour complète (PUT) de l'annonce créée"
+					}
+				},
+				{
+					"name": "PATCH /annonces/{id} (mise à jour partielle)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Price updated', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.price).to.eql(190.00);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"price\": 190.00\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						},
+						"description": "Mise à jour partielle (PATCH) : seul le prix est modifié"
+					}
+				},
+				{
+					"name": "PATCH /annonces/{id} (publier → PUBLISHED)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Peut retourner 200 (transition valide) ou 409 (si déjà publié)",
+									"pm.test('Status 200 or 409', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"PUBLISHED\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						},
+						"description": "Transition DRAFT → PUBLISHED"
+					}
+				},
+				{
+					"name": "PUT /annonces/{id} (PUBLISHED → 409)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 409 Conflict', function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test('Error message', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.error).to.include('BUSINESS');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Modification interdite\",\n    \"description\": \"Annonce publiée = non modifiable\",\n    \"price\": 999.00,\n    \"category\": \"Music\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						},
+						"description": "Règle métier : une annonce PUBLISHED ne peut pas être modifiée → 409"
+					}
+				},
+				{
+					"name": "DELETE /annonces/{id} (non archivée → 409)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 409 Conflict', function () {",
+									"    pm.response.to.have.status(409);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						},
+						"description": "Règle métier : suppression impossible si non ARCHIVED → 409"
+					}
+				},
+				{
+					"name": "DELETE /annonces/{id} (sans token → 401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 401 Unauthorized', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						},
+						"description": "Suppression sans token → 401"
+					}
+				}
+			],
+			"description": "Endpoints protégés : création, modification, suppression (Bearer Token requis)"
+		},
+		{
+			"name": "05 – Scénario complet (workflow)",
+			"item": [
+				{
+					"name": "1. Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Login OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"    pm.collectionVariables.set('token', pm.response.json().token);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \"username\": \"jane\", \"password\": \"password\" }"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["login"]
+						}
+					}
+				},
+				{
+					"name": "2. Créer annonce (DRAFT)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Created 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"    pm.collectionVariables.set('annonceId', pm.response.json().id);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Table basse scandinave\",\n    \"description\": \"Table basse en bois de chêne, style scandinave\",\n    \"price\": 120.00,\n    \"category\": \"Furniture\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces"]
+						}
+					}
+				},
+				{
+					"name": "3. Modifier (PUT)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Updated 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.json().price).to.eql(110.00);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Table basse scandinave\",\n    \"description\": \"Table basse en bois de chêne, style scandinave. Prix négociable.\",\n    \"price\": 110.00,\n    \"category\": \"Furniture\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						}
+					}
+				},
+				{
+					"name": "4. Archiver (PATCH status=ARCHIVED)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Archived 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.json().status).to.eql('ARCHIVED');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \"status\": \"ARCHIVED\" }"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						}
+					}
+				},
+				{
+					"name": "5. Supprimer (ARCHIVED → 204)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Deleted 204', function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						}
+					}
+				},
+				{
+					"name": "6. Vérifier suppression (→ 404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Annonce supprimée → 404', function () {",
+									"    pm.response.to.have.status(404);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/annonces/{{annonceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["annonces", "{{annonceId}}"]
+						}
+					}
+				}
+			],
+			"description": "Scénario end-to-end : Login → Créer → Modifier → Archiver → Supprimer → Vérifier 404"
+		}
+	]
+}
