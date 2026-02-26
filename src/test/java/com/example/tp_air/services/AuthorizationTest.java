@@ -2,6 +2,7 @@ package com.example.tp_air.services;
 
 import com.example.tp_air.models.*;
 import com.example.tp_air.repositories.AnnonceRepository;
+import com.example.tp_air.repositories.CategoryRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +19,9 @@ public class AuthorizationTest {
 
     @Mock
     private AnnonceRepository annonceRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
 
     @InjectMocks
     private AnnonceService annonceService;

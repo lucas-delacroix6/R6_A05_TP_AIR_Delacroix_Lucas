@@ -1,21 +1,12 @@
 package com.example.tp_air.repositories;
 
 import com.example.tp_air.models.Category;
-import jakarta.persistence.EntityManager;
-import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-public class CategoryRepository {
-    private final EntityManager em;
+import java.util.Optional;
 
-    public CategoryRepository(EntityManager em) {
-        this.em = em;
-    }
-
-    public List<Category> findAll() {
-        return em.createQuery("SELECT c FROM Category c", Category.class).getResultList();
-    }
-
-    public Category findById(Long id) {
-        return em.find(Category.class, id);
-    }
+@Repository
+public interface CategoryRepository extends JpaRepository<Category, Long> {
+    Optional<Category> findByLabel(String label);
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # MasterAnnonce – Script de test de charge simple (curl)
-# TP Dev Avancé #3 – IUT Montreuil BUT 3
+# TP Dev Avancé #4 – IUT Montreuil BUT 3
 #
 # Usage :
 #   chmod +x load-test.sh
@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:8080/masterannonce/api}"
+BASE_URL="${BASE_URL:-http://localhost:8080/api}"
 ITERATIONS="${1:-50}"
 CONCURRENCY="${2:-5}"
 RESULTS_FILE="load-test-results.csv"
@@ -61,7 +61,7 @@ run_test() {
 
 login() {
     local token
-    token=$(curl -s -X POST "$BASE_URL/login" \
+    token=$(curl -s -X POST "$BASE_URL/auth/login" \
         -H "Content-Type: application/json" \
         -d '{"username":"john","password":"password"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     echo "$token"
@@ -70,7 +70,7 @@ login() {
 # ─── Phase 1 : Healthcheck ──────────────────────────────────────────────────
 
 echo -e "${YELLOW}[Phase 1] Healthcheck...${NC}"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/helloWorld")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/annonces?page=0&size=1" || echo "000")
 if [ "$HTTP_CODE" != "200" ]; then
     echo -e "${RED}ERREUR : Le serveur ne répond pas ($HTTP_CODE). Vérifiez que Tomcat tourne.${NC}"
     exit 1
@@ -122,7 +122,7 @@ seq 1 "$ITERATIONS" | xargs -P "$CONCURRENCY" -I {} bash -c "
     -X POST \
     -H 'Content-Type: application/json' \
     -H 'Authorization: Bearer $TOKEN' \
-    -d '{\"title\":\"Load test {}\",\"description\":\"Annonce créée par le test de charge\",\"price\":99.99,\"category\":\"Test\"}' \
+    -d '{\"title\":\"Load test {}\",\"description\":\"Annonce créée par le test de charge\",\"price\":99.99,\"category\":\"Electronique\"}' \
     '$BASE_URL/annonces' >> '$RESULTS_FILE'
 "
 END=$(date +%s%N)
@@ -137,7 +137,7 @@ seq 1 "$ITERATIONS" | xargs -P "$CONCURRENCY" -I {} bash -c "
     -X POST \
     -H 'Content-Type: application/json' \
     -d '{\"username\":\"john\",\"password\":\"password\"}' \
-    '$BASE_URL/login' >> '$RESULTS_FILE'
+    '$BASE_URL/auth/login' >> '$RESULTS_FILE'
 "
 END=$(date +%s%N)
 ELAPSED=$(( (END - START) / 1000000 ))
