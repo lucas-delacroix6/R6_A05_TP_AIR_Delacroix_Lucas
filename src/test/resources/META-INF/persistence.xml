@@ -7,9 +7,9 @@
 
     <persistence-unit name="masterannonceTestPU" transaction-type="RESOURCE_LOCAL">
 
-        <class>com.example.tp_air.models.Annonce</class>
-        <class>com.example.tp_air.models.User</class>
-        <class>com.example.tp_air.models.Category</class>
+        <class>com.example.blockchain.models.Annonce</class>
+        <class>com.example.blockchain.models.User</class>
+        <class>com.example.blockchain.models.Category</class>
 
         <properties>
             <property name="jakarta.persistence.jdbc.driver"   value="org.h2.Driver"/>
