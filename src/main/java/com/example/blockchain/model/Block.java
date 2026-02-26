@@ -1,4 +1,4 @@
-package com.example.blockchain;
+package com.example.blockchain.model;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -13,12 +13,12 @@ public class Block {
 
     public String eventId;
     public String artist;
-    public Status status;
+    public String status;
     public String ticketOwner;
 
-    public int nonce; // Pour le Proof of Work
+    public int nonce;
 
-    public Block(int index, String data, String previousHash, String eventId, String artist, Status status, String ticketOwner) {
+    public Block(int index, String data, String previousHash, String eventId, String artist, String status, String ticketOwner) {
         this.index = index;
         this.timestamp = Instant.now().toString();
         this.data = data;
@@ -44,7 +44,7 @@ public class Block {
             }
             return hexString.toString();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Erreur lors du calcul du hash", e);
         }
     }
 
@@ -54,6 +54,5 @@ public class Block {
             nonce++;
             hash = calculateHash();
         }
-        System.out.println("Bloc Miné ! Hash: " + hash);
     }
 }
